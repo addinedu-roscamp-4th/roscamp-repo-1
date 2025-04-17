@@ -12,3 +12,7 @@ FF-66 github 연동 테스트 2
 + issue 완료 테스트 `resolve FF-66`
 + 다시 테스트 `FF-66 #resolve`
 + 다시 테스트 `FF-66 #done`
+
+
+작업 중 상태로 이동 테스트
+`FF-65 #in-progress`
