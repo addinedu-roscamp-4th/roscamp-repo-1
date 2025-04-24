@@ -18,20 +18,43 @@ class KeyboardTeleop(Node):
         self.angle_client = self.create_client(AngleControl, 'angle_control')
         self.pos_client = self.create_client(PosControl, 'pos_control')
         
+        # Initialize control parameters
+        self.angle_step = 5.0  # degrees
+        self.pos_step = 10.0   # mm
+        self.speed = 50        # 1-100
+        
         # Wait for services to be available
         while not self.angle_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('angle_control service not available, waiting again...')
         while not self.pos_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('pos_control service not available, waiting again...')
         
-        # Initialize control parameters
-        self.angle_step = 5.0  # degrees
-        self.pos_step = 10.0   # mm
-        self.speed = 50        # 1-100
+        # Get initial robot state from topics
+        self.get_logger().info('Getting initial robot state...')
         
-        # Current robot state
-        self.current_angles = [0.0] * 6
-        self.current_coords = [0.0] * 6
+        # Create temporary subscribers
+        angles_sub = self.create_subscription(Float32MultiArray, 'robot_angles', 
+            lambda msg: setattr(self, 'current_angles', msg.data), 10)
+        coords_sub = self.create_subscription(Float32MultiArray, 'robot_coords', 
+            lambda msg: setattr(self, 'current_coords', msg.data), 10)
+        
+        # Wait for initial messages
+        self.current_angles = None
+        self.current_coords = None
+        
+        while self.current_angles is None or self.current_coords is None:
+            rclpy.spin_once(self, timeout_sec=0.1)
+            if self.current_angles is None:
+                self.get_logger().info('Waiting for initial angles...')
+            if self.current_coords is None:
+                self.get_logger().info('Waiting for initial coordinates...')
+        
+        # Clean up temporary subscribers
+        self.destroy_subscription(angles_sub)
+        self.destroy_subscription(coords_sub)
+        
+        self.get_logger().info(f'Initial angles: {self.current_angles}')
+        self.get_logger().info(f'Initial coordinates: {self.current_coords}')
         
         self.get_logger().info('Keyboard teleop node initialized')
         self.print_instructions()
