@@ -1,3 +1,5 @@
+// 초음파 센서 버젼
+
 const int TRIG = 16; //TRIG 핀 설정 (초음파 보내는 핀)
 const int ECHO = 17; //ECHO 핀 설정 (초음파 받는 핀)
 
