@@ -1,0 +1,16 @@
+//arduino code using IR sensor
+// upload in arduino using appimage
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(A0, INPUT);
+}
+void loop() {
+  int val = analogRead(A0);
+  if (val < 970){
+    Serial.println("TRUE");
+  }else{
+    Serial.println("FALSE");
+  }
+  delay(500);
+}
