@@ -1,0 +1,5 @@
+string robot_name_id
+int32 order_number
+string book_name
+PinkyMissionPlace book_place
+PinkyMissionPlace pickup_place
