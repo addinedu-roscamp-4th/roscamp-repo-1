@@ -1,5 +1,0 @@
-int32 value    # gripper position value
-int32 speed    # gripper movement speed (1-100)
----
-bool success
-string message 

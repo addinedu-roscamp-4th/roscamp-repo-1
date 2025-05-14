@@ -1,4 +1,0 @@
-string robot_name_id
-int32 order_number
-PinkyMissionPlace start_place
-PinkyMissionPlace end_place
