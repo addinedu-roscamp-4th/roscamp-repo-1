@@ -1,0 +1,93 @@
+[
+  {
+    "timestamp": 1747127808.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 1,
+    "log": "새로운 주문 수신: '소주 클럽' 책 픽업 시작",
+    "success": true
+  },
+  {
+    "timestamp": 1747127808.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 1,
+    "log": "책장 위치(2.0, 3.0)로 이동 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747127808.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 1,
+    "log": "책장에서 '소주 클럽' 책 꺼내기 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747127936.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 1,
+    "log": "바구니에 책 담기 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747127936.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 1,
+    "log": "픽업 위치(5.0, 3.0)로 이동 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747127936.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 1,
+    "log": "바구니에서 책 꺼내기 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747127936.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 1,
+    "log": "픽업란에 '소주 클럽' 책 배치 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747127936.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 2,
+    "log": "새로운 주문 수신: '코드 브레이커' 책 픽업 시작",
+    "success": true
+  },
+  {
+    "timestamp": 1747128064.0,
+    "robot_name_id": "libro_robot_2",
+    "order_number": 3,
+    "log": "새로운 주문 수신: '스테로이드 인류' 책 픽업 시작",
+    "success": true
+  },
+  {
+    "timestamp": 1747128064.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 2,
+    "log": "책장 위치(4.0, 3.0)로 이동 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747128064.0,
+    "robot_name_id": "libro_robot_2",
+    "order_number": 3,
+    "log": "책장 위치(2.5, 3.0)로 이동 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747128064.0,
+    "robot_name_id": "libro_robot_2",
+    "order_number": 3,
+    "log": "책장에서 '스테로이드 인류' 책 꺼내기 완료",
+    "success": true
+  },
+  {
+    "timestamp": 1747128064.0,
+    "robot_name_id": "libro_robot_1",
+    "order_number": 2,
+    "log": "책장에서 '코드 브레이커' 책 꺼내기 완료",
+    "success": true
+  }
+]
