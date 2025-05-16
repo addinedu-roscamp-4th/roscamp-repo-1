@@ -1,0 +1,5 @@
+string robot_id
+string user_email
+int32 order_number
+PinkyRequest start_place
+PinkyRequest end_place

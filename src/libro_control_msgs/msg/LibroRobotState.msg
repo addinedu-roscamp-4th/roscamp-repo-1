@@ -1,0 +1,2 @@
+string code_id
+string message

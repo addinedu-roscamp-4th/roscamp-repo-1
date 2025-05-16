@@ -1,0 +1,93 @@
+[
+  {
+    "timestamp": "2025-05-16 16:30:33",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "새로운 주문 수신: '소주 클럽' 책 픽업 시작",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:30:33",
+    "robot_id": "libro_2",
+    "order_number": 2,
+    "log": "새로운 주문 수신: '코드 브레이커' 책 픽업 시작",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:30:59",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "책장 위치(2.0, 3.0)로 이동 완료",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:31:39",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "로봇 작업 강제 중지",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:31:51",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "로봇 작업 재시작",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:32:12",
+    "robot_id": "libro_2",
+    "order_number": 2,
+    "log": "로봇 작업 강제 중지",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:32:19",
+    "robot_id": "libro_2",
+    "order_number": 2,
+    "log": "로봇 작업 재시작",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:38:57",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "로봇 작업 강제 중지",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 16:39:01",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "로봇 작업 재시작",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 17:08:06",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "새로운 주문 수신: '소주 클럽' 책 픽업 시작",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 17:08:06",
+    "robot_id": "libro_2",
+    "order_number": 2,
+    "log": "새로운 주문 수신: '코드 브레이커' 책 픽업 시작",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 17:08:58",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "로봇 작업 강제 중지",
+    "success": true
+  },
+  {
+    "timestamp": "2025-05-16 17:09:04",
+    "robot_id": "libro_1",
+    "order_number": 1,
+    "log": "로봇 작업 재시작",
+    "success": true
+  }
+]
