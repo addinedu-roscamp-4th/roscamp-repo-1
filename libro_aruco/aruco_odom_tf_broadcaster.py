@@ -5,9 +5,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster
-from scipy.spatial.transform import Rotation as R
 from rclpy.qos import QoSProfile
-import numpy as np
 
 class ArucoOdomTfBroadcaster(Node):
 
@@ -94,49 +92,18 @@ class ArucoOdomTfBroadcaster(Node):
         odom_msg.child_frame_id = self.robot_odom_frame_id      # Odometry가 나타내는 프레임 (예: aruco0/odom)
 
         # Pose 정보 설정
-        # 위치 정보는 그대로 사용
         odom_msg.pose.pose.position = msg.pose.position
-        # 만약 z 위치를 강제로 0으로 만들고 싶다면:
-        # odom_msg.pose.pose.position.z = 0.0
-
-        # 회전 정보 수정 (roll, pitch를 0으로)
-        original_quat = np.array([
-            msg.pose.orientation.x,
-            msg.pose.orientation.y,
-            msg.pose.orientation.z,
-            msg.pose.orientation.w
-        ])
-
-        # 쿼터니언 -> 오일러 각 (ZYX 순서로 yaw, pitch, roll)
-        try:
-            rotation_obj = R.from_quat(original_quat)
-            euler_angles_zyx = rotation_obj.as_euler('zyx', degrees=False) # [yaw, pitch, roll] in radians
-
-            # roll과 pitch를 0으로 설정 (맵 좌표계와 수평 유지)
-            modified_euler_angles_zyx = np.array([euler_angles_zyx[0], 0.0, 0.0]) # [yaw, 0 (pitch), 0 (roll)]
-
-            # 수정된 오일러 각 -> 쿼터니언
-            modified_rotation_obj = R.from_euler('zyx', modified_euler_angles_zyx, degrees=False)
-            modified_quat_array = modified_rotation_obj.as_quat() # [x, y, z, w]
-
-            odom_msg.pose.pose.orientation.x = float(modified_quat_array[0])
-            odom_msg.pose.pose.orientation.y = float(modified_quat_array[1])
-            odom_msg.pose.pose.orientation.z = float(modified_quat_array[2])
-            odom_msg.pose.pose.orientation.w = float(modified_quat_array[3])
-        except Exception as e:
-            self.get_logger().error(f"회전 변환 중 오류 발생: {e}. 원본 회전을 사용합니다.")
-            odom_msg.pose.pose.orientation = msg.pose.orientation
-
+        odom_msg.pose.pose.orientation = msg.pose.orientation
 
         # Pose 공분산 설정: x, y, yaw에 대해서는 작은 분산값 (높은 신뢰도)
         # z, roll, pitch에 대해서는 매우 큰 분산값 (낮은 신뢰도, 사실상 무시)
         # 대각 성분 순서: x, y, z, roll, pitch, yaw
-        x_variance = 0.1  # x 위치 분산 (예시 값, 실제 시스템에 맞게 튜닝 필요)
-        y_variance = 0.1  # y 위치 분산
+        x_variance = 0.01  # x 위치 분산
+        y_variance = 0.01  # y 위치 분산
         z_variance = 1e9   # z 위치 분산 (매우 크게 설정하여 무시)
         roll_variance = 1e9 # roll 회전 분산 (매우 크게 설정하여 무시)
         pitch_variance = 1e9# pitch 회전 분산 (매우 크게 설정하여 무시)
-        yaw_variance = 0.05 # yaw 회전 분산
+        yaw_variance = 0.005 # yaw 회전 분산
 
         odom_msg.pose.covariance = [
             x_variance, 0.0, 0.0, 0.0, 0.0, 0.0,        # x
@@ -159,11 +126,14 @@ class ArucoOdomTfBroadcaster(Node):
 
         # Twist 공분산 설정 (속도 정보가 없으므로 매우 높은 불확실성을 나타냄)
         # 대각 성분에만 -1 값을 넣어 "알 수 없음"을 표현 (몇몇 시스템에서 사용되는 방식)
-        # 또는 매우 큰 값을 사용
-        odom_msg.twist.covariance = [-1.0 if i == j else 0.0 for i in range(6) for j in range(6)]
+        # 일반적으로 -1은 nav2에서 지원되지 않을 수 있으므로 큰 값을 권장
+        # odom_msg.twist.covariance = [-1.0 if i == j else 0.0 for i in range(6) for j in range(6)]
+        unknown_covariance = 1e9
+        odom_msg.twist.covariance = [
+            unknown_covariance if i == j else 0.0 for i in range(6) for j in range(6)
+        ]
 
         self.odom_publisher.publish(odom_msg)
-        # self.get_logger().debug(f"Odometry 발행: {odom_msg.header.frame_id} -> {odom_msg.child_frame_id}")
 
         # 3. 정적 TF 발행: odom_frame_id (arucoX/odom) -> base_footprint_frame_id
         # 이 TF는 odom_frame_id에 대해 base_footprint가 정적이라고 가정합니다.

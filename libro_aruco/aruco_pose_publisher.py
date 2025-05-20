@@ -9,7 +9,8 @@ import cv2
 import numpy as np
 from tf2_ros import Buffer, TransformListener
 import tf2_geometry_msgs
-from libro_aruco.aruco_processor import ArucoProcessor  # 사용자 정의 모듈
+from scipy.spatial.transform import Rotation as R
+from libro_aruco.aruco_processor import ArucoProcessor
 
 
 class ArucoPosePublisher(Node):
@@ -110,11 +111,58 @@ class ArucoPosePublisher(Node):
 
                 # 2. 맵 기준 PoseStamped 발행
                 try:
+                    # map 프레임에서 camera_optical_frame (마커 포즈가 정의된 프레임) 까지의 변환을 조회
                     transform_map_to_cam_optical = self.tf_buffer.lookup_transform(
                         self.map_frame, self.camera_frame, rclpy.time.Time())
 
+                    # pose_cam (카메라 기준 마커 포즈)를 map_frame 기준으로 변환
                     pose_map = tf2_geometry_msgs.do_transform_pose_stamped(pose_cam, transform_map_to_cam_optical)
-                    # pose_map.pose.position.z = 0.0
+
+                    # --- x, y, yaw 만 사용하도록 수정 ---
+                    # z 위치를 0으로 설정
+                    pose_map.pose.position.z = 0.0
+
+                    # roll, pitch를 0으로, yaw만 유지
+                    original_quat_map = np.array([
+                        pose_map.pose.orientation.x,
+                        pose_map.pose.orientation.y,
+                        pose_map.pose.orientation.z,
+                        pose_map.pose.orientation.w
+                    ])
+
+                    try:
+                        rotation_obj_map = R.from_quat(original_quat_map)
+                        # ZYX 오일러 각 순서는 [yaw, pitch, roll]을 의미 (라디안 단위)
+                        euler_angles_zyx_map = rotation_obj_map.as_euler('zyx', degrees=False)
+
+                        # roll과 pitch를 0으로 설정 (맵 좌표계와 수평 유지)
+                        # euler_angles_zyx_map[0]은 yaw, euler_angles_zyx_map[1]은 pitch, euler_angles_zyx_map[2]은 roll
+                        modified_euler_angles_zyx_map = np.array(
+                            [euler_angles_zyx_map[0], 0.0, 0.0])  # [yaw, 0 (pitch), 0 (roll)]
+
+                        # 수정된 오일러 각 -> 쿼터니언
+                        modified_rotation_obj_map = R.from_euler('zyx', modified_euler_angles_zyx_map, degrees=False)
+                        modified_quat_array_map = modified_rotation_obj_map.as_quat()  # [x, y, z, w]
+
+                        pose_map.pose.orientation.x = float(modified_quat_array_map[0])
+                        pose_map.pose.orientation.y = float(modified_quat_array_map[1])
+                        pose_map.pose.orientation.z = float(modified_quat_array_map[2])
+                        pose_map.pose.orientation.w = float(modified_quat_array_map[3])
+
+                    except Exception as e_rot:
+                        self.get_logger().error(f"맵 기준 포즈 회전 변환 중 오류 발생 (marker {marker_id}): {e_rot}. 원본 회전을 사용합니다.")
+
+                    if marker_id not in self.map_pose_publishers:
+                        self.map_pose_publishers[marker_id] = self.create_publisher(
+                            PoseStamped, f"/aruco{marker_id}/map/pose", 10)
+                    self.map_pose_publishers[marker_id].publish(pose_map)
+
+                except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+                    self.get_logger().warn(
+                        f"TF transform error from {self.camera_frame} to {self.map_frame}: {e}",
+                        throttle_duration_sec=5.0)
+                except Exception as e:
+                    self.get_logger().error(f"Error transforming pose for marker {marker_id}: {e}")
 
                     if marker_id not in self.map_pose_publishers:
                         self.map_pose_publishers[marker_id] = self.create_publisher(
