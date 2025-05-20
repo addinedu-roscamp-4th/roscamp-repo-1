@@ -26,7 +26,7 @@ def launch_setup(context, *args, **kwargs):
         Node(
             package='libro_aruco',
             executable='aruco_odom_tf_broadcaster',
-            name='aruco_odom_f_broadcaster',
+            name='aruco_odom_tf_broadcaster',
             output='screen',
             parameters=[{
                 'marker_id': int(marker_id),
