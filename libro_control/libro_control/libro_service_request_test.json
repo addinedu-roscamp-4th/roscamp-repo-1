@@ -1,0 +1,31 @@
+[
+    {
+        "type": "book_request",
+        "book_1": [{"book_name": "스테로이드 인류", "place_name": "C-3-2", "x": 2.5, "y": 3.0, "theta": 5.0}],
+        "book_2": [{"book_name": "밑바닥 부터 시작하는 딥러닝", "place_name": "B-2-1", "x": 10.0, "y": 8.0, "theta": 5.0}],
+        "pickup_place": [{"name": "픽업존 A", "x": 5.0, "y": 3.0, "theta": 4.0}],
+        "order_number": 1
+    },
+    {
+        "type": "book_request",
+        "book_1": [{"book_name": "이미지 처리 바이블", "place_name": "C-3-2", "x": 2.5, "y": 3.0, "theta": 5.0}],
+        "book_2": [],
+        "pickup_place": [{"name": "픽업존 B", "x": 5.0, "y": 3.0, "theta": 4.0}],
+        "order_number": 2
+    },
+    {
+        "order_number": 8,
+        "type": "navigate_request",
+        "user_id": 29,
+        "timestamp": "2025-05-20T08:22:01.952000",
+        "start_place": [{"name": "픽업존 A","x": 80.0,"y": 30.0,"theta": 180.0}],
+        "end_place": [{"name": "픽업존 B","x": 90.0,"y": 40.0,"theta": 270.0}]
+    },
+    {
+        "type": "book_request",
+        "book_1": [{"book_name": "ROS2 혼자 공부하는 로봇 SW", "place_name": "C-1-2", "x": 2.5, "y": 3.0, "theta": 5.0}],
+        "book_2": [{"book_name": "코드브레이커", "place_name": "B-2-1", "x": 2.5, "y": 3.0, "theta": 5.0}],
+        "pickup_place": [{"name": "픽업존 A", "x": 5.0, "y": 3.0, "theta": 4.0}],
+        "order_number": 3
+    }
+]
