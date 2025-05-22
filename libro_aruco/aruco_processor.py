@@ -81,8 +81,8 @@ class ArucoProcessor:
         # alpha 값 (0~1 사이). alpha가 클수록 새 측정값에 가중. 작을수록 필터링 강해짐.
         # LPF의 tau, Ts 관계: alpha = Ts / (tau + Ts)
         # 예: tau = 0.1, Ts = 0.033 (30FPS) -> alpha = 0.033 / (0.1 + 0.033) approx 0.248
-        slerp_alpha = 0.25  # SLERP 필터링 가중치 (0 < alpha <= 1)
-        position_lpf_alpha = 0.25  # 위치 LPF 가중치
+        slerp_alpha = 0.1  # SLERP 필터링 가중치 (0 < alpha <= 1)
+        position_lpf_alpha = 0.1  # 위치 LPF 가중치
 
         for i, marker_id_arr in enumerate(ids):  # ids는 (N, 1) 형태일 수 있음
             marker_id = int(marker_id_arr[0])
