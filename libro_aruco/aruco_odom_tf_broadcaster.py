@@ -24,8 +24,8 @@ class ArucoOdomTfBroadcaster(Node):
 
         # LPF 파라미터 (차단 주파수와 샘플링 주기에 따라 결정, 0 < alpha <= 1)
         # alpha가 작을수록 강한 필터링 (느린 반응), 클수록 약한 필터링 (빠른 반응)
-        self.declare_parameter('lpf_alpha_linear', 0.3) # 선속도 LPF alpha
-        self.declare_parameter('lpf_alpha_angular', 0.3) # 각속도 LPF alpha
+        self.declare_parameter('lpf_alpha_linear', 0.1) # 선속도 LPF alpha
+        self.declare_parameter('lpf_alpha_angular', 0.1) # 각속도 LPF alpha
 
         # 공분산 파라미터 (작을수록 신뢰도 높음)
         self.declare_parameter('pose_cov_x', 0.01)       # m^2
@@ -47,6 +47,28 @@ class ArucoOdomTfBroadcaster(Node):
         self.map_frame_id = self.get_parameter('map_frame').get_parameter_value().string_value
         odom_frame_id = self.get_parameter('odom_frame').get_parameter_value().string_value
         base_frame_id = self.get_parameter('base_frame').get_parameter_value().string_value
+
+        # base_footprint에서 lidar_lidar_mount까지의 z축 오프셋
+        z_offset_base_to_lidar_mount = 0.072  # 미터
+
+        # lidar_lidar_mount에서 아르코 마커까지의 z축 오프셋
+        z_offset_lidar_mount_to_marker = 0.02  # 미터
+
+        # base_footprint에서 아르코 마커까지의 총 z축 오프셋
+        total_z_offset_base_to_marker = z_offset_base_to_lidar_mount + z_offset_lidar_mount_to_marker
+
+        # base_footprint에서 아르코 마커까지의 변환 행렬 (T_base_marker)
+        # 마커는 base_footprint 기준으로 x, y, yaw 오프셋 없이 z축으로만 이동
+        trans_base_to_marker = np.array([0.0, 0.0, total_z_offset_base_to_marker])
+        # 마커의 방향은 base_footprint의 방향과 동일하다고 가정 (회전 없음)
+        rot_base_to_marker_quat = tf_transformations.quaternion_from_euler(0, 0, 0)  # RPY
+
+        T_base_marker_mat = tf_transformations.quaternion_matrix(rot_base_to_marker_quat)
+        T_base_marker_mat[0:3, 3] = trans_base_to_marker
+
+        # 아르코 마커에서 base_footprint까지의 변환 행렬 (T_marker_base)
+        # T_marker_base = inv(T_base_marker)
+        self.T_marker_base_footprint_mat = tf_transformations.inverse_matrix(T_base_marker_mat)
 
         # LPF 인스턴스 생성
         lpf_alpha_linear = self.get_parameter('lpf_alpha_linear').get_parameter_value().double_value
@@ -220,9 +242,14 @@ class ArucoOdomTfBroadcaster(Node):
         T_map_current_marker_mat = tf_transformations.quaternion_matrix(q_map_current_marker)
         T_map_current_marker_mat[0:3, 3] = trans_map_current_marker
 
-        # T_odom_current_marker (이것이 odom 기준 로봇의 포즈)
-        T_odom_base_footprint_mat = np.dot(T_odom_map_mat, T_map_current_marker_mat)
+        # odom 기준 아르코 마커의 포즈 계산: T_odom_marker = T_odom_map * T_map_marker
+        T_odom_current_marker_mat = np.dot(T_odom_map_mat, T_map_current_marker_mat)
 
+        # odom 기준 'base_footprint'의 포즈 계산: T_odom_base = T_odom_marker * T_marker_base
+        # self.T_marker_base_footprint_mat는 __init__에서 계산된 오프셋 변환 행렬
+        T_odom_base_footprint_mat = np.dot(T_odom_current_marker_mat, self.T_marker_base_footprint_mat)
+
+        # T_odom_base_footprint_mat로부터 translation과 quaternion 추출
         trans_odom_base = tf_transformations.translation_from_matrix(T_odom_base_footprint_mat)
         q_odom_base = tf_transformations.quaternion_from_matrix(T_odom_base_footprint_mat)
 
