@@ -1,2 +1,7 @@
-# roscamp-repo-1
-ROS2와 AI를 활용한 자율주행 로봇개발자 부트캠프 1팀 저장소. 
+# 가상환경 만들기
+
+``` python3 -m venv venv/gui ```
+
+# bcrypt 모듈 설치
+
+``` pip install bcrypt ```
