@@ -7,10 +7,12 @@ from geometry_msgs.msg import PoseStamped
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 import numpy as np
+import tf2_ros
 from tf2_ros import Buffer, TransformListener
 import tf2_geometry_msgs
 from scipy.spatial.transform import Rotation as R
 from libro_aruco.aruco_processor import ArucoProcessor
+import tf_transformations
 
 
 class ArucoPosePublisher(Node):
@@ -35,9 +37,11 @@ class ArucoPosePublisher(Node):
         self.dist_coeffs = None
         self.camera_info_received = False
 
-        # TF 리스너 (맵 기준 Pose 계산용)
+        # TF 리스너 및 정적 변환 저장을 위한 변수
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.static_transform_map_to_cam_optical = None  # 조회된 정적 변환 저장
+        self.static_transform_lookup_timer = None
 
         # 구독자
         self.camera_info_sub = self.create_subscription(
@@ -52,14 +56,54 @@ class ArucoPosePublisher(Node):
             Image, f"/{self.camera_name}/image_aruco", 10)
 
         self.get_logger().info(
-            f"ArucoPosePublisher 초기화. 카메라: {self.camera_name}, 광학 프레임: {self.camera_frame}, 맵 프레임: {self.map_frame}")
+            f"ArucoPosePublisher 초기화 완료. 카메라: {self.camera_name}, 카메라 광학 프레임: {self.camera_frame}, 맵 프레임: {self.map_frame}")
+
+        # 초기 정적 TF 조회 시도 (CameraInfo 수신 후에도 다시 시도)
+        self.attempt_static_tf_lookup()
+
+    def attempt_static_tf_lookup(self):
+        if self.static_transform_map_to_cam_optical is not None:
+            if self.static_transform_lookup_timer is not None:
+                self.static_transform_lookup_timer.cancel()
+                self.static_transform_lookup_timer = None
+            return True
+
+        try:
+            self.get_logger().info(
+                f"정적 TF 조회 시도: Target Frame: '{self.map_frame}', Source Frame: '{self.camera_frame}'")
+            self.static_transform_map_to_cam_optical = self.tf_buffer.lookup_transform(
+                self.map_frame,  # Target frame
+                self.camera_frame,  # Source frame
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=1.0)
+            )
+            self.get_logger().info(f"정적 TF ('{self.map_frame}' -> '{self.camera_frame}') 조회 성공 및 저장 완료.")
+            if self.static_transform_lookup_timer is not None:
+                self.static_transform_lookup_timer.cancel()
+                self.static_transform_lookup_timer = None
+            return True
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            self.get_logger().warn(
+                f"정적 TF ('{self.map_frame}' -> '{self.camera_frame}') 조회 실패: {e}. 5초 후 재시도합니다.")
+            if self.static_transform_lookup_timer is None or self.static_transform_lookup_timer.canceled:
+                self.static_transform_lookup_timer = self.create_timer(5.0, self.attempt_static_tf_lookup)
+            return False
+        except Exception as e:
+            self.get_logger().error(f"정적 TF 조회 중 예기치 않은 오류: {e}")
+            if self.static_transform_lookup_timer is None or self.static_transform_lookup_timer.canceled:
+                self.static_transform_lookup_timer = self.create_timer(5.0, self.attempt_static_tf_lookup)
+            return False
 
     def camera_info_callback(self, msg: CameraInfo):
         if not self.camera_info_received:
             self.camera_matrix = np.array(msg.k).reshape((3, 3))
             self.dist_coeffs = np.array(msg.d)
-            # CameraInfo의 frame_id가 실제 카메라 광학 프레임과 다를 수 있으므로, 파라미터 사용 권장
-            # self.camera_frame = msg.header.frame_id # 필요시 이렇게 설정할 수도 있음
+
+            # CameraInfo의 frame_id가 파라미터로 받은 self.camera_frame과 일치하는지 확인
+            if msg.header.frame_id != self.camera_frame:
+                self.get_logger().warn(
+                    f"CameraInfo의 frame_id ('{msg.header.frame_id}')가 파라미터 camera_frame ('{self.camera_frame}')과 다릅니다. "
+                    f"파라미터 값을 카메라 광학 프레임 ID로 사용합니다.")
 
             self.aruco_processor = ArucoProcessor(
                 camera_matrix=self.camera_matrix,
@@ -67,13 +111,19 @@ class ArucoPosePublisher(Node):
                 marker_length=self.marker_size
             )
             self.camera_info_received = True
-            self.get_logger().info(f"카메라 정보 수신 및 ArucoProcessor 초기화 완료. 광학 프레임 ID: {self.camera_frame}")
+            self.get_logger().info(f"카메라 정보 수신 및 ArucoProcessor 초기화 완료. 사용된 광학 프레임 ID: {self.camera_frame}")
+
+            # 카메라 정보 수신 후, 아직 정적 TF 조회가 성공하지 못했다면 다시 시도
+            if self.static_transform_map_to_cam_optical is None:
+                self.attempt_static_tf_lookup()
+
             # CameraInfo는 한 번만 필요하므로 구독 해제 가능
             # self.destroy_subscription(self.camera_info_sub)
+            # self.camera_info_sub = None # 명시적으로 None 처리하여 중복 해제 방지
 
     def image_callback(self, msg: Image):
         if not self.camera_info_received or self.aruco_processor is None:
-            self.get_logger().debug('카메라 정보 또는 ArUco 프로세서 미초기화.', throttle_duration_sec=5.0)
+            self.get_logger().debug('카메라 정보 또는 ArUco 프로세서가 아직 초기화되지 않았습니다.', throttle_duration_sec=5.0)
             return
 
         try:
@@ -85,9 +135,9 @@ class ArucoPosePublisher(Node):
         corners, ids, _, rvecs, tvecs = self.aruco_processor.detect_markers(cv_image)
         marker_data_list = self.aruco_processor.get_pose_data(corners, ids, rvecs, tvecs)
 
-        current_time = msg.header.stamp
+        current_time = msg.header.stamp  # 이미지 메시지의 타임스탬프 사용
 
-        if ids is not None:
+        if ids is not None and len(marker_data_list) > 0:
             for marker_data in marker_data_list:
                 marker_id = marker_data['id']
 
@@ -109,85 +159,65 @@ class ArucoPosePublisher(Node):
                         PoseStamped, f"/aruco{marker_id}/cam/pose", 10)
                 self.cam_pose_publishers[marker_id].publish(pose_cam)
 
-                # 2. 맵 기준 PoseStamped 발행
-                try:
-                    # map 프레임에서 camera_optical_frame (마커 포즈가 정의된 프레임) 까지의 변환을 조회
-                    transform_map_to_cam_optical = self.tf_buffer.lookup_transform(
-                        self.map_frame, self.camera_frame, rclpy.time.Time())
-
-                    # pose_cam (카메라 기준 마커 포즈)를 map_frame 기준으로 변환
-                    pose_map = tf2_geometry_msgs.do_transform_pose_stamped(pose_cam, transform_map_to_cam_optical)
-
-                    # --- x, y, yaw 만 사용하도록 수정 ---
-                    # z 위치를 0으로 설정
-                    pose_map.pose.position.z = 0.0
-
-                    # roll, pitch를 0으로, yaw만 유지
-                    original_quat_map = np.array([
-                        pose_map.pose.orientation.x,
-                        pose_map.pose.orientation.y,
-                        pose_map.pose.orientation.z,
-                        pose_map.pose.orientation.w
-                    ])
-
+                # 2. 맵 기준 PoseStamped 발행 (최적화된 TF 조회 및 변환 사용)
+                if self.static_transform_map_to_cam_optical:  # 정적 TF가 성공적으로 조회되었을 때만 실행
                     try:
-                        rotation_obj_map = R.from_quat(original_quat_map)
-                        # ZYX 오일러 각 순서는 [yaw, pitch, roll]을 의미 (라디안 단위)
-                        euler_angles_zyx_map = rotation_obj_map.as_euler('zyx', degrees=False)
+                        # 저장된 정적 변환을 사용하여 카메라 기준 포즈를 맵 기준으로 변환
+                        pose_map = tf2_geometry_msgs.do_transform_pose_stamped(pose_cam,
+                                                                               self.static_transform_map_to_cam_optical)
 
-                        # roll과 pitch를 0으로 설정 (맵 좌표계와 수평 유지)
-                        # euler_angles_zyx_map[0]은 yaw, euler_angles_zyx_map[1]은 pitch, euler_angles_zyx_map[2]은 roll
-                        modified_euler_angles_zyx_map = np.array(
-                            [euler_angles_zyx_map[0], 0.0, 0.0])  # [yaw, 0 (pitch), 0 (roll)]
+                        # --- 맵 기준 포즈 변환 (roll/pitch 제거) 최적화 (tf_transformations 사용) ---
+                        # z 위치를 0으로 설정 (2D 평면 가정)
+                        pose_map.pose.position.z = 0.0
 
-                        # 수정된 오일러 각 -> 쿼터니언
-                        modified_rotation_obj_map = R.from_euler('zyx', modified_euler_angles_zyx_map, degrees=False)
-                        modified_quat_array_map = modified_rotation_obj_map.as_quat()  # [x, y, z, w]
+                        # roll, pitch를 0으로 만들고 yaw만 유지
+                        original_q_ros = pose_map.pose.orientation
+                        original_q_tf_format = [original_q_ros.x, original_q_ros.y, original_q_ros.z, original_q_ros.w]
 
-                        pose_map.pose.orientation.x = float(modified_quat_array_map[0])
-                        pose_map.pose.orientation.y = float(modified_quat_array_map[1])
-                        pose_map.pose.orientation.z = float(modified_quat_array_map[2])
-                        pose_map.pose.orientation.w = float(modified_quat_array_map[3])
+                        # 오일러 각으로 변환 (tf_transformations.euler_from_quaternion의 기본 axes는 'sxyz')
+                        # 이 함수는 roll, pitch, yaw 순서로 값을 반환하는 것으로 일반적으로 사용됨
+                        (roll, pitch, yaw) = tf_transformations.euler_from_quaternion(original_q_tf_format)
 
-                    except Exception as e_rot:
-                        self.get_logger().error(f"맵 기준 포즈 회전 변환 중 오류 발생 (marker {marker_id}): {e_rot}. 원본 회전을 사용합니다.")
+                        # roll과 pitch를 0으로 설정하고 yaw만 사용하여 새 쿼터니언 생성
+                        # tf_transformations.quaternion_from_euler는 roll, pitch, yaw 순서의 인자를 받음
+                        modified_q_tf_format = tf_transformations.quaternion_from_euler(0.0, 0.0, yaw)
 
-                    if marker_id not in self.map_pose_publishers:
-                        self.map_pose_publishers[marker_id] = self.create_publisher(
-                            PoseStamped, f"/aruco{marker_id}/map/pose", 10)
-                    self.map_pose_publishers[marker_id].publish(pose_map)
+                        pose_map.pose.orientation.x = modified_q_tf_format[0]
+                        pose_map.pose.orientation.y = modified_q_tf_format[1]
+                        pose_map.pose.orientation.z = modified_q_tf_format[2]
+                        pose_map.pose.orientation.w = modified_q_tf_format[3]
+                        # --- 변환 끝 ---
 
-                except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-                    self.get_logger().warn(
-                        f"TF transform error from {self.camera_frame} to {self.map_frame}: {e}",
-                        throttle_duration_sec=5.0)
-                except Exception as e:
-                    self.get_logger().error(f"Error transforming pose for marker {marker_id}: {e}")
+                        if marker_id not in self.map_pose_publishers:
+                            self.map_pose_publishers[marker_id] = self.create_publisher(
+                                PoseStamped, f"/aruco{marker_id}/map/pose", 10)
+                        self.map_pose_publishers[marker_id].publish(pose_map)
 
-                    if marker_id not in self.map_pose_publishers:
-                        self.map_pose_publishers[marker_id] = self.create_publisher(
-                            PoseStamped, f"/aruco{marker_id}/map/pose", 10)
-                    self.map_pose_publishers[marker_id].publish(pose_map)
+                    except Exception as e:
+                        self.get_logger().error(f"맵 기준 포즈 변환 또는 발행 중 오류 발생 (marker {marker_id}): {e}")
+                else:
+                    if self.camera_info_received:  # 카메라 정보는 받았으나 TF가 아직 준비 안된 경우만 로그 출력
+                        self.get_logger().debug(
+                            f"정적 TF ({self.map_frame} -> {self.camera_frame})가 아직 준비되지 않아 마커 {marker_id}의 맵 기준 포즈 발행을 건너<0xE1><0x8A><0x9D>니다.",
+                            throttle_duration_sec=5.0)
 
-                except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-                    self.get_logger().warn(
-                        f"TF transform error from {self.camera_frame} to {self.map_frame}: {e}",
-                        throttle_duration_sec=5.0)
-                except Exception as e:
-                    self.get_logger().error(f"Error transforming pose for marker {marker_id}: {e}")
+            # 시각화 이미지 발행 (marker_data_list가 비어있지 않을 때만)
+            rvecs_viz = np.array([md['rvec'] for md in marker_data_list])
+            tvecs_viz = np.array([md['tvec'] for md in marker_data_list])
 
-            # 시각화 이미지 발행
-            if len(marker_data_list) > 0:
-                rvecs_viz = np.array([md['rvec'] for md in marker_data_list])
-                tvecs_viz = np.array([md['tvec'] for md in marker_data_list])
-                # corners와 ids는 detect_markers에서 나온 모든 감지된 마커 기준
-                # draw_markers가 내부적으로 id와 매칭하여 rvecs_viz, tvecs_viz를 사용해야 함
-                cv_image_drawn = self.aruco_processor.draw_markers(cv_image, corners, ids, rvecs_viz, tvecs_viz)
+            ids_viz = np.array([md['id'] for md in marker_data_list]).reshape(-1, 1)  # draw_markers가 요구하는 형태로
+            corners_viz = [md['corners'] for md in marker_data_list]  # corners도 매칭
 
-                img_msg_out = self.bridge.cv2_to_imgmsg(cv_image_drawn, "bgr8")
-                img_msg_out.header = msg.header  # 원본 이미지 헤더 사용 (스탬프, 프레임 ID)
-                img_msg_out.header.frame_id = self.camera_frame  # 또는 msg.header.frame_id
-                self.image_pub.publish(img_msg_out)
+            if len(corners_viz) > 0:  # 실제 그릴 마커가 있을 때만
+                cv_image_drawn = self.aruco_processor.draw_markers(cv_image, corners_viz, ids_viz, rvecs_viz, tvecs_viz)
+
+                try:
+                    img_msg_out = self.bridge.cv2_to_imgmsg(cv_image_drawn, "bgr8")
+                    img_msg_out.header = msg.header
+                    img_msg_out.header.frame_id = self.camera_frame
+                    self.image_pub.publish(img_msg_out)
+                except CvBridgeError as e:
+                    self.get_logger().error(f"시각화 이미지 변환 오류: {e}")
 
 
 def main(args=None):
@@ -196,11 +226,12 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('ArucoPosePublisher shutting down.')
+        node.get_logger().info('ArucoPosePublisher 노드 종료 중...')
     finally:
-        if rclpy.ok():
+        if rclpy.ok():  # 노드가 이미 종료되지 않았는지 확인
             node.destroy_node()
-            rclpy.shutdown()
+        if rclpy.ok():  # rclpy 컨텍스트가 유효한지 확인
+            rclpy.try_shutdown()  # try_shutdown은 예외 발생 시에도 안전
 
 
 if __name__ == '__main__':
