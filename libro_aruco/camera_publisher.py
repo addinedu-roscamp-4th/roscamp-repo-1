@@ -34,6 +34,11 @@ class CameraPublisher(Node):
             rclpy.shutdown()
             return
 
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # 버퍼 크기 최소화
+        self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # 자동 포커스 비활성화
+        # self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # 자동 노출 비활성화
+        # self.cap.set(cv2.CAP_PROP_EXPOSURE, -6)  # 고정 노출값 설정
+
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width_val)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height_val)
         self.cap.set(cv2.CAP_PROP_FPS, self.publish_rate_val)
@@ -57,6 +62,9 @@ class CameraPublisher(Node):
         self.mapx = None
         self.mapy = None
         self.new_camera_matrix = None
+
+        self.frame_count = 0
+        self.last_fps_time = self.get_clock().now()
 
         if os.path.exists(self.calibration_file_path):
             self.load_camera_calibration()
@@ -150,6 +158,17 @@ class CameraPublisher(Node):
             processed_frame = frame  # 왜곡 보정 정보 없으면 원본 사용
 
         current_time_msg = self.get_clock().now().to_msg()
+
+        # 성능 모니터링
+        self.frame_count += 1
+        current_time = self.get_clock().now()
+        time_diff = (current_time - self.last_fps_time).nanoseconds / 1e9
+
+        if time_diff >= 5.0:  # 5초마다 FPS 출력
+            actual_fps = self.frame_count / time_diff
+            self.get_logger().info(f"실제 카메라 FPS: {actual_fps:.2f}")
+            self.frame_count = 0
+            self.last_fps_time = current_time
 
         # Image 메시지 발행
         img_msg = self.bridge.cv2_to_imgmsg(processed_frame, "bgr8")

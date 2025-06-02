@@ -61,6 +61,18 @@ class ArucoPosePublisher(Node):
         # 초기 정적 TF 조회 시도 (CameraInfo 수신 후에도 다시 시도)
         self.attempt_static_tf_lookup()
 
+    def normalize_quaternion(self, quat):
+        """쿼터니언 정규화"""
+        norm = np.sqrt(quat.x ** 2 + quat.y ** 2 + quat.z ** 2 + quat.w ** 2)
+        if norm < 1e-8:
+            quat.x, quat.y, quat.z, quat.w = 0.0, 0.0, 0.0, 1.0
+        else:
+            quat.x /= norm
+            quat.y /= norm
+            quat.z /= norm
+            quat.w /= norm
+        return quat
+
     def attempt_static_tf_lookup(self):
         if self.static_transform_map_to_cam_optical is not None:
             if self.static_transform_lookup_timer is not None:
@@ -77,11 +89,13 @@ class ArucoPosePublisher(Node):
                 rclpy.time.Time(),
                 timeout=rclpy.duration.Duration(seconds=1.0)
             )
+
             self.get_logger().info(f"정적 TF ('{self.map_frame}' -> '{self.camera_frame}') 조회 성공 및 저장 완료.")
             if self.static_transform_lookup_timer is not None:
                 self.static_transform_lookup_timer.cancel()
                 self.static_transform_lookup_timer = None
             return True
+
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             self.get_logger().warn(
                 f"정적 TF ('{self.map_frame}' -> '{self.camera_frame}') 조회 실패: {e}. 5초 후 재시도합니다.")
@@ -110,16 +124,13 @@ class ArucoPosePublisher(Node):
                 dist_coeffs=self.dist_coeffs,
                 marker_length=self.marker_size
             )
+
             self.camera_info_received = True
             self.get_logger().info(f"카메라 정보 수신 및 ArucoProcessor 초기화 완료. 사용된 광학 프레임 ID: {self.camera_frame}")
 
             # 카메라 정보 수신 후, 아직 정적 TF 조회가 성공하지 못했다면 다시 시도
             if self.static_transform_map_to_cam_optical is None:
                 self.attempt_static_tf_lookup()
-
-            # CameraInfo는 한 번만 필요하므로 구독 해제 가능
-            # self.destroy_subscription(self.camera_info_sub)
-            # self.camera_info_sub = None # 명시적으로 None 처리하여 중복 해제 방지
 
     def image_callback(self, msg: Image):
         if not self.camera_info_received or self.aruco_processor is None:
@@ -145,7 +156,6 @@ class ArucoPosePublisher(Node):
                 pose_cam = PoseStamped()
                 pose_cam.header.stamp = current_time
                 pose_cam.header.frame_id = self.camera_frame  # ArUco 결과는 카메라 광학 프레임 기준
-
                 pose_cam.pose.position.x = float(marker_data['tvec'][0])
                 pose_cam.pose.position.y = float(marker_data['tvec'][1])
                 pose_cam.pose.position.z = float(marker_data['tvec'][2])
@@ -154,9 +164,13 @@ class ArucoPosePublisher(Node):
                 pose_cam.pose.orientation.z = float(marker_data['quaternion'][2])
                 pose_cam.pose.orientation.w = float(marker_data['quaternion'][3])
 
+                # 쿼터니언 정규화
+                pose_cam.pose.orientation = self.normalize_quaternion(pose_cam.pose.orientation)
+
                 if marker_id not in self.cam_pose_publishers:
                     self.cam_pose_publishers[marker_id] = self.create_publisher(
                         PoseStamped, f"/aruco{marker_id}/cam/pose", 10)
+
                 self.cam_pose_publishers[marker_id].publish(pose_cam)
 
                 # 2. 맵 기준 PoseStamped 발행 (최적화된 TF 조회 및 변환 사용)
@@ -174,23 +188,30 @@ class ArucoPosePublisher(Node):
                         original_q_ros = pose_map.pose.orientation
                         original_q_tf_format = [original_q_ros.x, original_q_ros.y, original_q_ros.z, original_q_ros.w]
 
-                        # 오일러 각으로 변환 (tf_transformations.euler_from_quaternion의 기본 axes는 'sxyz')
-                        # 이 함수는 roll, pitch, yaw 순서로 값을 반환하는 것으로 일반적으로 사용됨
+                        # 쿼터니언 정규화
+                        norm = np.linalg.norm(original_q_tf_format)
+                        if norm > 1e-8:
+                            original_q_tf_format = [q / norm for q in original_q_tf_format]
+
+                        # 오일러 각으로 변환
                         (roll, pitch, yaw) = tf_transformations.euler_from_quaternion(original_q_tf_format)
 
                         # roll과 pitch를 0으로 설정하고 yaw만 사용하여 새 쿼터니언 생성
-                        # tf_transformations.quaternion_from_euler는 roll, pitch, yaw 순서의 인자를 받음
                         modified_q_tf_format = tf_transformations.quaternion_from_euler(0.0, 0.0, yaw)
 
+                        # 정규화된 쿼터니언 적용
                         pose_map.pose.orientation.x = modified_q_tf_format[0]
                         pose_map.pose.orientation.y = modified_q_tf_format[1]
                         pose_map.pose.orientation.z = modified_q_tf_format[2]
                         pose_map.pose.orientation.w = modified_q_tf_format[3]
-                        # --- 변환 끝 ---
+
+                        # 최종 정규화
+                        pose_map.pose.orientation = self.normalize_quaternion(pose_map.pose.orientation)
 
                         if marker_id not in self.map_pose_publishers:
                             self.map_pose_publishers[marker_id] = self.create_publisher(
                                 PoseStamped, f"/aruco{marker_id}/map/pose", 10)
+
                         self.map_pose_publishers[marker_id].publish(pose_map)
 
                     except Exception as e:
@@ -198,13 +219,12 @@ class ArucoPosePublisher(Node):
                 else:
                     if self.camera_info_received:  # 카메라 정보는 받았으나 TF가 아직 준비 안된 경우만 로그 출력
                         self.get_logger().debug(
-                            f"정적 TF ({self.map_frame} -> {self.camera_frame})가 아직 준비되지 않아 마커 {marker_id}의 맵 기준 포즈 발행을 건너<0xE1><0x8A><0x9D>니다.",
+                            f"정적 TF ({self.map_frame} -> {self.camera_frame})가 아직 준비되지 않아 마커 {marker_id}의 맵 기준 포즈 발행을 건너뜁니다.",
                             throttle_duration_sec=5.0)
 
             # 시각화 이미지 발행 (marker_data_list가 비어있지 않을 때만)
             rvecs_viz = np.array([md['rvec'] for md in marker_data_list])
             tvecs_viz = np.array([md['tvec'] for md in marker_data_list])
-
             ids_viz = np.array([md['id'] for md in marker_data_list]).reshape(-1, 1)  # draw_markers가 요구하는 형태로
             corners_viz = [md['corners'] for md in marker_data_list]  # corners도 매칭
 
@@ -223,6 +243,7 @@ class ArucoPosePublisher(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ArucoPosePublisher()
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
