@@ -1,0 +1,21 @@
+void setup() {
+  Serial.begin(9600);
+  pinMode(A0, INPUT);
+  pinMode(A1, INPUT);
+}
+void loop() {
+  int val1 = analogRead(A0);
+  int val2 = analogRead(A1);
+  // Serial.println(val);
+  if (val1 < 400){
+    Serial.print("P1 : OFF, ");
+  }else{
+    Serial.print("P1 : ON, ");
+  }
+  if (val2 < 400){
+    Serial.println("P2 : OFF");
+  }else{
+    Serial.println("P2 : ON");
+  }
+  delay(100);
+}

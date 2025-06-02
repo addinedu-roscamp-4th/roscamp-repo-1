@@ -1,0 +1,12 @@
+[
+    {
+        "pickup_place": "픽업존 A",
+        "P1": "filled",
+        "P2": "filled"
+    },
+    {
+        "pickup_place": "픽업존 B",
+        "P1": "empty",
+        "P2": "filled"
+    }
+]
