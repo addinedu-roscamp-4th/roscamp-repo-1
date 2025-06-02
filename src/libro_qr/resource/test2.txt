@@ -1,0 +1,7 @@
+# /home/pinky/ws/pinky_lcd/example/step1.py
+source의 
+# play_cam.py 실행 부분
+try:
+    subprocess.run(['python3', 'step4.py'], check=True)  # 같은 폴더 내 play_cam.py 실행
+except subprocess.CalledProcessError as e:
+    print(f"Error occurred while running play_cam.py: {e}")

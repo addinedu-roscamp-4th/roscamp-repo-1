@@ -1,0 +1,4 @@
+bool on_off    # true for ON, false for OFF
+---
+bool success
+string message 

@@ -1,0 +1,7 @@
+sudo apt install python3-pip
+sudo apt install python3-opencv
+sudo apt install python3-picamera2
+sudo apt install libzbar0
+sudo pip3 install pyzbar 
+
+sudo apt install python3-zbar

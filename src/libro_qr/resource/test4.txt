@@ -1,0 +1,23 @@
+# /home/ws/44libro/step4.py
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+class QRSubscriber(Node):
+    def __init__(self):
+        super().__init__("qr_subscriber")
+        # Create a subscription to the 'qr_info' topic
+        self.subscription = self.create_subscription(
+            String, "qr_info", self.listener_callback, 10
+        )
+        self.get_logger().info("QR Info Subscriber Node Initialized")
+    def listener_callback(self, msg):
+        # Print the received message in the console
+        self.get_logger().info(f"Received QR Info: {msg.data}")
+def main(args=None):
+    rclpy.init(args=args)
+    qr_subscriber = QRSubscriber()
+    rclpy.spin(qr_subscriber)  # Keep the subscriber running and processing messages
+    qr_subscriber.destroy_node()  # Clean up the subscriber node
+    rclpy.shutdown()
+if __name__ == "__main__":
+    main()

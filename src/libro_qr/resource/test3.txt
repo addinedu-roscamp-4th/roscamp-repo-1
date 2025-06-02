@@ -1,0 +1,96 @@
+# /home/pinky/ws/pinky_lcd/example/step4.py
+from picamera2 import Picamera2
+import cv2
+from pinky_lcd import LCD
+from PIL import Image, ImageDraw, ImageFont
+from pyzbar.pyzbar import decode
+import time
+import requests
+import rclpy
+from std_msgs.msg import String
+# API에서 사용자 데이터를 가져오기
+def get_user_db():
+    url = "http://192.168.0.138:8000/users"  # API URL
+    response = requests.get(url)
+    if response.status_code == 200:
+        users_data = response.json()  # JSON 데이터 파싱
+        user_db = {}
+        # 사용자 데이터에서 ID와 이름만 추출해서 user_db 만들기
+        for user in users_data:
+            user_db[str(user['id'])] = user['name']  # user['id']와 user['name']을 user_db에 저장
+        return user_db
+    else:
+        print("API 요청 실패")
+        return {}
+# 회원 데이터베이스 (QR값 → 이름 매핑)
+user_db = get_user_db()
+lcd = LCD()
+lcd.set_backlight(50)
+picam2 = Picamera2()
+picam2.configure(
+    picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)})
+)
+picam2.start()
+# ROS2 초기화
+rclpy.init()
+# 퍼블리셔를 생성합니다
+node = rclpy.create_node('qr_publisher_node')  # 노드 이름은 qr_publisher_node
+pub = node.create_publisher(String, 'qr_info', 10)  # 'qr_info' 토픽을 통해 String 메시지 전송
+def show_message_on_lcd(message):
+    img_width, img_height = 320, 240
+    background_color = (0, 0, 0)
+    text_color = (0, 255, 0)
+    img = Image.new("RGB", (img_width, img_height), color=background_color)
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("MaruBuri-Bold.ttf", 28)
+    except:
+        font = ImageFont.load_default()
+    # 여러 줄 텍스트 처리
+    lines = message.split("\n")
+    total_height = sum(draw.textbbox((0, 0), line, font=font)[3] for line in lines)
+    y_offset = (img_height - total_height) // 2
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        text_width = bbox[2] - bbox[0]
+        x = (img_width - text_width) // 2
+        draw.text((x, y_offset), line, fill=text_color, font=font)
+        y_offset += bbox[3]
+    lcd.img_show(img)
+try:
+    while True:
+        frame = picam2.capture_array()
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rotate_frame = cv2.rotate(rgb_frame, cv2.ROTATE_180)
+        flipped_frame = cv2.flip(rotate_frame, 1)
+        # QR 코드 인식
+        decoded_objects = decode(flipped_frame)
+        for obj in decoded_objects:
+            qr_data = obj.data.decode("utf-8")
+            print(f"[QR 인식됨] {qr_data}")
+            user_id = qr_data.split('/')[-1]  # URL의 마지막 부분 (예: '27')만 추출
+            print(f"[user_id] {user_id}")
+            user_name = user_db.get(user_id, None)  # user_db에서 ID로 이름 찾아오기
+            print(f"[user_name] {user_name}")
+            if user_name:
+                message = f"{user_name} 회원님\n안녕하세요!"
+            else:
+                message = "회원 정보를 찾을 수 없습니다."
+            show_message_on_lcd(message)
+            # ROS2 토픽으로 회원 정보 퍼블리시
+            msg = String()
+            msg.data = message
+            pub.publish(msg)  # 메시지를 퍼블리시
+            time.sleep(5)  # 메시지 5초간 표시
+            raise KeyboardInterrupt  # 메시지 표시 후 종료
+        # 실시간 영상 LCD에 출력
+        show_frame = Image.fromarray(flipped_frame)
+        lcd.img_show(show_frame)
+        cv2.waitKey(1)
+except KeyboardInterrupt:
+    print("프로그램 종료")
+finally:
+    picam2.close()
+    lcd.close()
+    # ROS2 종료
+    rclpy.shutdown()
