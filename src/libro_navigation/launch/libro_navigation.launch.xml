@@ -1,0 +1,15 @@
+<launch>
+    <arg name="namespace" default="libro1"/>
+    <arg name="map" default="$(find-pkg-share navigation)/map/libro_map.yaml"/>
+    <arg name="use_sim_time" default="False"/>
+    <arg name="autostart" default="True"/>
+
+    <group>
+        <push-ros-namespace namespace="$(var namespace)"/>
+
+        <node pkg="navigation" exec="planner_node" name="planner" output="screen" />
+        <node pkg="navigation" exec="controller_node" name="controller" output="screen" />
+        <node pkg="navigation" exec="obstacle_detector_node" name="detector" output="screen" />
+
+    </group>
+</launch>
